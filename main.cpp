@@ -1,13 +1,18 @@
-#include <pthread.h>
+
 #include "locker/locker.h"
 #include "threadpool/threadpool.h"
 #include "http/http_conn.h"
 
-#define MAX_FD 65536
-#define MAX_EVENT_NUMBER 10000
+#define MAX_FD 65536           //最大文件描述符
+#define MAX_EVENT_NUMBER 10000 //最大事件数
 
-// extern int addfd(int epollfd, int fd, bool oneshot, int TRIGMode);
-// extern int removefd(int epollfd, int fd);
+//#define listenfdET //边缘触发非阻塞
+#define listenfdLT //水平触发阻塞
+
+//这三个函数在http_conn.cpp中定义，改变链接属性
+extern int addfd(int epollfd, int fd, bool oneshot);
+extern int removefd(int epollfd, int fd);
+extern int setnonblocking(int fd);
 
 void addsig(int sig, void(handler)(int), bool restart = true)
 {
@@ -56,12 +61,11 @@ int main(int argc, char *argv[])
     //预先为每个可能的客户连接分配一个http_conn对象
     http_conn *users = new http_conn[MAX_FD];
     assert(users);
-    int user_count = 0;
 
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
     assert(listenfd >= 0);
-    struct linger tmp = {1, 0};
-    setsockopt(listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+    // struct linger tmp = {1, 0};
+    // setsockopt(listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 
     int ret = 0;
     struct sockaddr_in address;
@@ -70,16 +74,22 @@ int main(int argc, char *argv[])
     inet_pton(AF_INET, ip_address, &address.sin_addr);
     address.sin_port = htons(port);
 
+    //设置端口重用
+    int flag = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+
     ret = bind(listenfd, (struct sockaddr *)&address, sizeof(address));
     assert(ret >= 0);
 
     ret = listen(listenfd, 5);
     assert(ret >= 0);
 
+    //创建内核事件表
     epoll_event events[MAX_EVENT_NUMBER];
     int epollfd = epoll_create(5);
     assert(epollfd != -1);
-    addfd(epollfd, listenfd, false, 0);
+
+    addfd(epollfd, listenfd, false);
     http_conn::m_epollfd = epollfd;
 
     while (true)
@@ -98,6 +108,7 @@ int main(int argc, char *argv[])
             {
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof(client_address);
+#ifdef listenfdLT
                 int connfd = accept(listenfd, (struct sockaddr *)&client_address, &client_addrlength);
                 if (connfd < 0)
                 {
@@ -111,6 +122,27 @@ int main(int argc, char *argv[])
                 }
                 //初始化客户连接
                 users[connfd].init(connfd, client_address);
+#endif
+
+#ifdef listenfdET
+                while (1)
+                {
+                    int connfd = accept(listenfd, (struct sockaddr *)&client_address, &client_addrlength);
+                    if (connfd < 0)
+                    {
+                        printf("errno is %d\n", errno);
+                        break;
+                    }
+                    if (http_conn::m_user_count >= MAX_FD)
+                    {
+                        show_error(connfd, "Internal server busy");
+                        break;
+                    }
+                    //初始化客户连接
+                    users[connfd].init(connfd, client_address);
+                }
+                continue;
+#endif
             }
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
@@ -132,7 +164,10 @@ int main(int argc, char *argv[])
             else if (events[i].events & EPOLLOUT)
             {
                 //根据写的结果，决定是否关闭连接
-                if (!users[sockfd].write())
+                if (users[sockfd].write())
+                {
+                }
+                else
                 {
                     users[sockfd].close_conn();
                 }

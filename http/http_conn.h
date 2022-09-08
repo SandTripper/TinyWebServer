@@ -19,7 +19,6 @@
 #include <stdarg.h>
 #include <errno.h>
 #include "../locker/locker.h"
-#include "../threadpool/threadpool.h"
 
 class http_conn
 {
@@ -128,6 +127,7 @@ private:
     bool add_headers(int content_length);
     bool add_content_length(int content_length);
     bool add_linger();
+    bool add_content_type(const char *content_type);
     bool add_blank_line();
 
 public:
@@ -196,11 +196,10 @@ private:
      其中m_iv_count表示被写内存块的数量*/
     struct iovec m_iv[2];
     int m_iv_count;
-
-    //是否开启ET模式
-    int m_TRIGMode;
+    //未知
+    int bytes_to_send;
+    //未知
+    int bytes_have_send;
 };
-
-#include "http_conn.tpp"
 
 #endif
