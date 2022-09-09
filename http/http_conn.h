@@ -101,6 +101,9 @@ public:
     //非阻塞写操作
     bool write();
 
+    //返回客户的地址
+    sockaddr_in *get_address();
+
 private:
     //初始化连接
     void init();

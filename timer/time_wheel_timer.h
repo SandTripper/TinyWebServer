@@ -1,18 +1,9 @@
 #ifndef TIME_WHEEL_TIMER_H
 #define TIME_WHEEL_TIMER_H
 
-#include <netinet/in.h>
-#include <stdio.h>
 #include <time.h>
-#include <sys/fcntl.h>
-#include <sys/epoll.h>
-#include <errno.h>
-#include <signal.h>
-#include <string.h>
-#include <assert.h>
-#include <unistd.h>
-
-#include "../http/http_conn.h"
+#include <netinet/in.h>
+#include <cstdio>
 
 class tw_timer; //前向声明
 
@@ -55,6 +46,20 @@ public:
 
 class time_wheel
 {
+
+public:
+    //时间轮上槽的数目
+    static const int N = 60;
+
+    //转动一次经过的时间
+    static const int SI = 1;
+
+    //记录定时器启动时的时间戳
+    int start_time;
+
+    //记录定时器运行的时间数
+    int time_have_run;
+
 public:
     time_wheel();
 
@@ -69,59 +74,12 @@ public:
     // SI时间到后，调用该函数，时间轮向前转一下
     void tick();
 
-    //获取转动一次经过的时间
-    int get_SI();
-
 private:
-    //时间轮上槽的数目
-    static const int N = 60;
-
-    //转动一次经过的时间
-    static const int SI = 1;
-
     //时间轮的槽，每个元素指向一个定时器链表
-    tw_timer *slots[N];
+    tw_timer **slots;
 
     //时间轮的当前槽
     int cur_slot;
 };
-
-class Utils
-{
-public:
-    Utils(int timeslot);
-
-    //对文件描述符设置非阻塞
-    int setnonblocking(int fd);
-
-    //将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
-    void addfd(int epollfd, int fd, bool one_shot, int TRIGMode);
-
-    //信号处理函数
-    static void sig_handler(int sig);
-
-    //设置信号函数
-    void addsig(int sig, void(handler)(int), bool restart = true);
-
-    //定时处理任务，重新定时以不断触发SIGALRM信号
-    void timer_handler();
-
-    void show_error(int connfd, const char *info);
-
-public:
-    //信号处理函数用来通知主循环的管道
-    static int u_pipefd[2];
-
-    //时间轮定时器
-    static time_wheel m_time_wheel;
-
-    // epoll描述符
-    static int u_epollfd;
-
-    int m_TIMESLOT;
-};
-
-//回调函数
-void cb_func(client_data *user_data);
 
 #endif

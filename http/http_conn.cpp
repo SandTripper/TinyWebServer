@@ -1,6 +1,8 @@
 #include "http_conn.h"
 #include <fstream>
 
+#define MDEBUG
+
 //#define connfdET //边缘触发非阻塞
 #define connfdLT //水平触发阻塞
 
@@ -118,6 +120,10 @@ void http_conn::close_conn(bool real_close)
 {
     if (real_close && (m_sockfd != -1))
     {
+#ifdef MDEBUG
+        printf("http_conn: close fd %d,now has %d users\n", m_sockfd, m_user_count);
+        fflush(stdout);
+#endif
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
         m_user_count--; //关闭一个连接时，将客户总量减1
@@ -168,6 +174,7 @@ bool http_conn::read()
     {
         bytes_read = recv(m_sockfd, m_read_buf + m_read_idx,
                           READ_BUFFER_SIZE - m_read_idx, 0);
+
         if (bytes_read == -1)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -273,8 +280,11 @@ http_conn::HTTP_CODE http_conn::process_read()
     {
         text = get_line();            // start_line是行在buffer中 的起始位置
         m_start_line = m_checked_idx; //记录下一行的起始位置
+
+#ifdef MDEBUG
         printf("%s\n", text);
         fflush(stdout);
+#endif
 
         switch (m_check_state)
         {
@@ -679,4 +689,9 @@ void http_conn::init(int sockfd, const sockaddr_in &addr)
     m_user_count++;
 
     init();
+}
+
+sockaddr_in *http_conn::get_address()
+{
+    return &m_address;
 }
