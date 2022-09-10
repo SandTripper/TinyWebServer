@@ -5,13 +5,28 @@ Linux下C++轻量级Web服务器
 
 功能
 ---------------
-* 响应GET请求，返回指定文件
+* 响应GET和POST请求，实现账号的注册和登录
 * 通过时间轮定时器处理非活动连接
-* 可分别设置listenfd的触发模式和connfd的触发模式
+* 可对 listen 和 connect 分别选择 ET 和 LT 模式
+* 可选择同步记录日志和异步记录日志
+* 可通过配置文件修改启动参数
+
+参数设置
+---------------
+配置文件：server.config
+参数：
+localhost = 主机地址
+port = 端口号
+connection_mode = LT模式写 0，ET 模式写 1
+listen_mode = LT模式写 0，ET 模式写 1
+log_mode = 同步写日志填 0，异步写日志填 1
+threadnum = 线程数
 
 TODO
 ---------------
-* 响应POST请求，用于实现账号注册，登录
+* 响应POST请求，用于实现账号注册，登录(已完成)
+* 记录登录状态，即设置Cookie
+* 实现文件的上传
   
 
 BUG
@@ -28,9 +43,7 @@ BUG
   这两行代码是为了调试方便，但是会使得webbench压测全是fail，
   并且在客户端选择Connection:close时，客户端无法接收大文件
 
-* main.cpp内的listenfd触发模式和http_conn.cpp内的listenfd触发模式需要一致
-  不可以一个文件define listenfdET，另一个文件define listenfdLT
-  这样会出现不可预知的错误
+
 
 致谢
 ---------------

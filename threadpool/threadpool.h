@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <pthread.h>
 #include "../locker/locker.h"
+#include "../log/log.h"
 
 template <typename T>
 class threadpool;
@@ -65,7 +66,8 @@ threadpool<T>::threadpool(int thread_number, int max_request)
     //创建thread_number个线程，并将它们都设置为脱离线程
     for (int i = 0; i < thread_number; ++i)
     {
-        printf("create the %dth thread\n", i);
+        LOG_INFO("create the %dth thread", i);
+        Log::get_instance()->flush();
         if (pthread_create(m_threads + i, NULL, worker, this) != 0)
         {
             delete[] m_threads; //构造函数出错，在退出前释放已申请成功的资源

@@ -19,6 +19,8 @@
 #include <stdarg.h>
 #include <errno.h>
 #include "../locker/locker.h"
+#include "../sqlconnpool/sql_connection_pool.h"
+#include "../log/log.h"
 
 class http_conn
 {
@@ -87,7 +89,7 @@ public:
 
 public:
     //初始化新接受的链接
-    void init(int sockfd, const sockaddr_in &addr);
+    void init(int sockfd, const sockaddr_in &addr, connection_pool *connPool, int listenfd_Trig_mode, int connfd_Trig_mode);
 
     //关闭连接
     void close_conn(bool real_close = true);
@@ -103,6 +105,9 @@ public:
 
     //返回客户的地址
     sockaddr_in *get_address();
+
+    //初始化数据库，读出到map
+    void initmysql_result(connection_pool *connPool);
 
 private:
     //初始化连接
@@ -140,6 +145,9 @@ public:
 
     //统计用户数量
     static int m_user_count;
+
+    //指向全局唯一连接池实例的指针
+    connection_pool *m_connPool;
 
 private:
     //该HTTP连接的socket和对方的socket地址
@@ -199,10 +207,20 @@ private:
      其中m_iv_count表示被写内存块的数量*/
     struct iovec m_iv[2];
     int m_iv_count;
-    //未知
-    int bytes_to_send;
-    //未知
-    int bytes_have_send;
+    //需要发送的字节数
+    int m_bytes_to_send;
+    //已经发送的字节数
+    int m_bytes_have_send;
+    //是否启用的POST
+    int m_cgi;
+    //存储请求头数据
+    char *m_string;
+
+    // listenfd是否开启ET模式，ET模式为1，LT模式为0
+    int m_listenfd_Trig_mode;
+
+    // connfd是否开启ET模式，ET模式为1，LT模式为0
+    int m_connfd_Trig_mode;
 };
 
 #endif

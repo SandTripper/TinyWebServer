@@ -1,5 +1,4 @@
 #include "time_wheel_timer.h"
-#define MDEBUG
 
 tw_timer::tw_timer(int rot, int ts)
     : next(NULL), prev(NULL), rotation(rot), time_slot(ts)
@@ -34,10 +33,6 @@ time_wheel::~time_wheel()
 
 tw_timer *time_wheel::add_timer(int timeout)
 {
-#ifdef MDEBUG
-    printf("addtimer, timeout = %d\n", timeout);
-    fflush(stdout);
-#endif
 
     if (timeout < 0)
     {
@@ -84,10 +79,6 @@ tw_timer *time_wheel::add_timer(int timeout)
 
 void time_wheel::del_timer(tw_timer *timer)
 {
-#ifdef MDEBUG
-    printf("deltimer, sockfd = %d\n", timer->user_data->sockfd);
-    fflush(stdout);
-#endif
 
     if (!timer)
     {
@@ -124,10 +115,6 @@ void time_wheel::tick()
 
     while (time_have_run <= cur - start_time)
     {
-#ifdef MDEBUG
-        printf("tick:%d\n", time_have_run);
-        fflush(stdout);
-#endif
         tw_timer *tmp = slots[cur_slot]; //取得当前槽的头节点
 
         while (tmp) //遍历链表
