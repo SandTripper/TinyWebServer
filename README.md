@@ -14,14 +14,16 @@ Linux下C++轻量级Web服务器
 参数设置
 ---------------
 配置文件：server.config
-参数：
-localhost = 主机地址
-port = 端口号
-connection_mode = LT模式写 0，ET 模式写 1
-listen_mode = LT模式写 0，ET 模式写 1
-log_mode = 同步写日志填 0，异步写日志填 1
-threadnum = 线程数
 
+参数：
+
+* localhost = 主机地址
+* port = 端口号
+* connection_mode = LT模式写 0，ET 模式写 1
+* listen_mode = LT模式写 0，ET 模式写 1
+* log_mode = 同步写日志填 0，异步写日志填 1
+* threadnum = 线程数
+  
 TODO
 ---------------
 * 响应POST请求，用于实现账号注册，登录(已完成)
