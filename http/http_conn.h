@@ -18,8 +18,10 @@
 #include <sys/mman.h>
 #include <stdarg.h>
 #include <errno.h>
+
 #include "../locker/locker.h"
-#include "../sqlconnpool/sql_connection_pool.h"
+#include "../mysqlconnpool/mysql_connection_pool.h"
+#include "../redisconnpool/redis_connection_pool.h"
 #include "../log/log.h"
 
 class http_conn
@@ -45,10 +47,10 @@ public:
         PATCH = 8
     };
 
-    //主状态机的两种可能状态，分别表示：当前正在分析请求行，当前正在分析头部字段，当前正在分析内容
+    //主状态机的三种可能状态，分别表示：当前正在分析请求行，当前正在分析头部字段，当前正在分析内容
     enum CHECK_STATE
     {
-        CHECK_STATE_REQUESTLINE = 0,
+        CHECK_STATE_TYPELINE = 0,
         CHECK_STATE_HEADER,
         CHECK_STATE_CONTENT
     };
@@ -67,7 +69,9 @@ public:
     BAD_REQUSET表示客户请求有语法错误；
     NO_RESOURCE表示没有该文件；
     FORBIDDEN_REQUEST表示客户对资源没有足够的访问权限；
-    FILE_REQUEST表示请求的文件已经就绪
+    FILE_REQUEST_MEM表示请求的文件已经就绪,通过加载文件到内存发送；
+    FILE_REQUEST_MAP表示请求的文件已经就绪,通过内存映射发送；
+    REDIRECT表示需要重定向；
     INTERNAL_ERROR表示服务器内部错误；
     CLOSED_CONNECTION表示客户端已经关闭连接*/
     enum HTTP_CODE
@@ -77,7 +81,9 @@ public:
         BAD_REQUEST,
         NO_RESOURCE,
         FORBIDDEN_REQUEST,
-        FILE_REQUEST,
+        FILE_REQUEST_MEM,
+        FILE_REQUEST_MAP,
+        REDIRECT,
         INTERNAL_ERROR,
         CLOSED_CONNECTION
     };
@@ -89,7 +95,7 @@ public:
 
 public:
     //初始化新接受的链接
-    void init(int sockfd, const sockaddr_in &addr, connection_pool *connPool, int listenfd_Trig_mode, int connfd_Trig_mode);
+    void init(int sockfd, const sockaddr_in &addr, int listenfd_Trig_mode, int connfd_Trig_mode);
 
     //关闭连接
     void close_conn(bool real_close = true);
@@ -107,7 +113,7 @@ public:
     sockaddr_in *get_address();
 
     //初始化数据库，读出到map
-    void initmysql_result(connection_pool *connPool);
+    void init_cache();
 
 private:
     //初始化连接
@@ -120,20 +126,25 @@ private:
     bool process_write(HTTP_CODE ret);
 
     //下面这一组函数被process_read调用以分析HTTP请求
-    HTTP_CODE parse_request_line(char *text);
+    HTTP_CODE parse_type_line(char *text);
     HTTP_CODE parse_headers(char *text);
     HTTP_CODE parse_content(char *text);
     HTTP_CODE do_request();
     char *get_line();
     LINE_STATUS parse_line();
 
+    std::string extractSessionID(const std::string &content);
+
     //下面这一组函数被process_write调用以填充HTTP应答
     void unmap();
+    void unmem();
     bool add_response(const char *format, ...);
     bool add_content(const char *content);
     bool add_status_line(int status, const char *title);
     bool add_headers(int content_length);
     bool add_content_length(int content_length);
+    bool add_set_cookie(const char *cookie);
+    bool add_location(const char *location);
     bool add_linger();
     bool add_content_type(const char *content_type);
     bool add_blank_line();
@@ -146,8 +157,14 @@ public:
     //统计用户数量
     static int m_user_count;
 
-    //指向全局唯一连接池实例的指针
-    connection_pool *m_connPool;
+    //指向全局唯一mysql连接池实例的指针
+    static mysqlConnectionPool *m_mysql_conn_pool;
+
+    //指向全局唯一读redis连接池实例的指针
+    static redisConnectionPool *m_read_redis_conn_pool;
+
+    //指向全局唯一写redis连接池实例的指针
+    static redisConnectionPool *m_write_redis_conn_pool;
 
 private:
     //该HTTP连接的socket和对方的socket地址
@@ -199,6 +216,12 @@ private:
     //客户请求的目标文件被mmap到内存中的起始位置
     char *m_file_address;
 
+    //指向要发送的内容
+    char *m_write_mem;
+
+    // m_write_mem的大小
+    int m_write_mem_len;
+
     /*目标文件的状态，通过它我们可以判断文件是否存在，
     是否为目录，是否可读，并获取文件大小等信息*/
     struct stat m_file_stat;
@@ -214,13 +237,30 @@ private:
     //是否启用的POST
     int m_cgi;
     //存储请求头数据
-    char *m_string;
+    char *m_content;
 
     // listenfd是否开启ET模式，ET模式为1，LT模式为0
     int m_listenfd_Trig_mode;
 
     // connfd是否开启ET模式，ET模式为1，LT模式为0
     int m_connfd_Trig_mode;
+
+    // HTTP请求的cookie字段
+    std::string m_cookie;
+
+    //该会话的sessionID
+    std::string m_session_id;
+
+    //缓存欢迎界面的内容
+    static char *welcome_html;
+    //欢迎界面的大小
+    static int welcome_html_len;
+
+    int m_want_set_cookie;
+    string m_cookie_to_set;
+
+    //重定向的网址
+    string m_location;
 };
 
 #endif

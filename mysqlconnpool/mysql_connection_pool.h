@@ -1,5 +1,5 @@
-#ifndef SQL_CONNECTION_POOL_H
-#define SQL_CONNECTION_POOL_H
+#ifndef MYSQL_CONNECTION_POOL_H
+#define MYSQL_CONNECTION_POOL_H
 
 #include <string>
 #include <list>
@@ -11,12 +11,12 @@
 
 using namespace std;
 
-class connection_pool
+class mysqlConnectionPool
 {
 public:
-    connection_pool();
+    mysqlConnectionPool();
 
-    ~connection_pool();
+    ~mysqlConnectionPool();
 
     //获取数据库连接
     MYSQL *GetConnection();
@@ -28,7 +28,7 @@ public:
     void DestroyPool();
 
     //单例懒汉模式
-    static connection_pool *GetInstance();
+    static mysqlConnectionPool *GetInstance();
 
     void init(string url, string User, string PassWord, string DataBaseName, int Port, unsigned int MaxConn);
 
@@ -61,16 +61,16 @@ private:
 };
 
 // RAII类
-class connectionRAII
+class mysql_connectionRAII
 {
 public:
-    connectionRAII(MYSQL **con, connection_pool *connPool);
+    mysql_connectionRAII(MYSQL **con, mysqlConnectionPool *connPool);
 
-    ~connectionRAII();
+    ~mysql_connectionRAII();
 
 private:
     MYSQL *conRAII;
-    connection_pool *poolRAII;
+    mysqlConnectionPool *poolRAII;
 };
 
 #endif

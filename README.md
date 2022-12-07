@@ -10,6 +10,7 @@ Linux下C++轻量级Web服务器
 * 可对 listen 和 connect 分别选择 ET 和 LT 模式
 * 可选择同步记录日志和异步记录日志
 * 可通过配置文件修改启动参数
+* 使用cookie和session结合保存登录信息
 
 参数设置
 ---------------
@@ -23,12 +24,6 @@ Linux下C++轻量级Web服务器
 * listen_mode = LT模式写 0，ET 模式写 1
 * log_mode = 同步写日志填 0，异步写日志填 1
 * threadnum = 线程数
-  
-TODO
----------------
-* 响应POST请求，用于实现账号注册，登录(已完成)
-* 记录登录状态，即设置Cookie
-* 实现文件的上传
   
 
 BUG

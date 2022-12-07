@@ -10,7 +10,6 @@
     html {
         height: 100%;
         background-image: linear-gradient(45deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
-        text-align: center;
         background-repeat: no-repeat;
         background-size: 100% 100%"
 
@@ -23,22 +22,35 @@
         font-size: 75px;
     }
 
-    .button {
-        font-size: 75px;
+    .bl {
+        margin-right: 10px;
+    }
+
+    .br {
+        margin-right: 10px;
+    }
+
+    .header {
+        text-align: right;
+        width: 100%;
     }
 </style>
 
 <body>
+    <div class="header">
+        <a class="bl" href="/login">登录</a>
+        <a class="br" href="/register">注册</a>
+    </div>
 
     <p>HELLO WORLD</p>
 
-    <form action="login" method="post">
-        <button class="button">登录</button>
+    <!-- <form action="login" method="post">
+        <button class="button">登</button>
     </form>
     <br />
     <form action="register" method="post">
         <button class="button">注册</button>
-    </form>
+    </form> -->
 
 
 </body>
