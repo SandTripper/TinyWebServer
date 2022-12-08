@@ -1,5 +1,7 @@
-# /logs
+/logs
 
-# server.config
+server.config
 
-# mysql.sql
+mysql.sql
+
+#nohup.out

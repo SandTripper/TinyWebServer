@@ -7,7 +7,10 @@
 
 using namespace std;
 
+// murmur函数的种子
 static const uint SEED = 114514;
+
+BloomFilter SessionManager::m_bloom_filter_session_id(10);
 
 SessionManager *SessionManager::getInstance()
 {
@@ -21,8 +24,9 @@ SessionManager::~SessionManager()
 
 string SessionManager::addSession(string user_name, int survival_time)
 {
-    string session_id = to_string(getMillisecondTimeStamp()) += to_string(hash(user_name.c_str(), user_name.length())) + to_string(rand());
     MD5 md5;
+    string session_id = to_string(getMillisecondTimeStamp()) += to_string(md5.murmur3(user_name.c_str(), user_name.length(), SEED)) + to_string(rand());
+
     session_id = md5.encode(session_id);
     uint death_time = 0;
     if (survival_time != -1)
@@ -33,6 +37,8 @@ string SessionManager::addSession(string user_name, int survival_time)
     {
         death_time = 4294967295;
     }
+
+    m_bloom_filter_session_id.addKey(session_id);
 
     string query_str;
 
@@ -67,7 +73,12 @@ Session SessionManager::getSession(string session_id)
 
     if (session_id == "")
     {
-        return Session(session_id, death_time, user_name);
+        return Session("", 0, "");
+    }
+
+    if (!m_bloom_filter_session_id.hasKey(session_id)) // 不在布隆过滤器
+    {
+        return Session("", 0, "");
     }
 
     string query_str;
@@ -151,53 +162,40 @@ void SessionManager::delSession(string session_id)
     }
 }
 
-uint SessionManager::hash(const char *key, size_t len)
-{
-    uint32_t h = SEED;
-    if (len > 3)
-    {
-        const uint32_t *key_x4 = (const uint32_t *)key;
-        size_t i = len >> 2;
-        do
-        {
-            uint32_t k = *key_x4++;
-            k *= 0xcc9e2d51;
-            k = (k << 15) | (k >> 17);
-            k *= 0x1b873593;
-            h ^= k;
-            h = (h << 13) | (h >> 19);
-            h = (h * 5) + 0xe6546b64;
-        } while (--i);
-        key = (const char *)key_x4;
-    }
-    if (len & 3)
-    {
-        size_t i = len & 3;
-        uint32_t k = 0;
-        key = &key[i - 1];
-        do
-        {
-            k <<= 8;
-            k |= *key--;
-        } while (--i);
-        k *= 0xcc9e2d51;
-        k = (k << 15) | (k >> 17);
-        k *= 0x1b873593;
-        h ^= k;
-    }
-    h ^= len;
-    h ^= h >> 16;
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-    return h;
-}
-
 long long SessionManager::getMillisecondTimeStamp()
 {
     long long timems = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     return timems;
+}
+
+// 初始化布隆过滤器
+void SessionManager::init_bloom_filter()
+{
+    // 从连接池中取一个连接
+    MYSQL *mysql = NULL;
+    mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
+
+    // 在user表中检索username，passwd数据，浏览器端输入
+    if (mysql_query(mysql, "SELECT * FROM session_tb"))
+    {
+        LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
+    }
+
+    // 从表中检索完整的结果集
+    MYSQL_RES *result = mysql_store_result(mysql);
+
+    // 返回结果集中的列数
+    int num_fields = mysql_num_fields(result);
+
+    // 返回所有字段结构的数组
+    MYSQL_FIELD *fields = mysql_fetch_fields(result);
+
+    // 从结果集中获取下一行，将对应的用户名和密码，存入map中
+    while (MYSQL_ROW row = mysql_fetch_row(result))
+    {
+        string temp1(row[0]);
+        m_bloom_filter_session_id.addKey(temp1);
+    }
 }
 
 SessionManager::SessionManager()

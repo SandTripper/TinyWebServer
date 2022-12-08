@@ -2,6 +2,7 @@ server: main.cpp ./threadpool/threadpool.h \
 		./http/http_conn.cpp ./http/http_conn.h \
 		./http/session_manager.h ./http/session_manager.cpp\
 		./http/md5.h\
+		./http/bloom_filter.h ./http/bloom_filter.cpp\
 		./locker/locker.h \
 		./timer/time_wheel_timer.h ./timer/time_wheel_timer.cpp \
 		./mysqlconnpool/mysql_connection_pool.cpp ./mysqlconnpool/mysql_connection_pool.h \
@@ -13,6 +14,7 @@ server: main.cpp ./threadpool/threadpool.h \
 		./http/http_conn.cpp ./http/http_conn.h \
 		./http/session_manager.h ./http/session_manager.cpp\
 		./http/md5.h\
+		./http/bloom_filter.h ./http/bloom_filter.cpp\
 		./locker/locker.h \
 		./timer/time_wheel_timer.h ./timer/time_wheel_timer.cpp \
 		./mysqlconnpool/mysql_connection_pool.cpp ./mysqlconnpool/mysql_connection_pool.h \

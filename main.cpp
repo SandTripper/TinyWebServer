@@ -187,6 +187,8 @@ int main(int argc, char *argv[])
     SessionManager::getInstance()->m_read_redis_conn_pool = read_redis_conn_pool;
     SessionManager::getInstance()->m_write_redis_conn_pool = write_redis_conn_pool;
 
+    SessionManager::getInstance()->init_bloom_filter();
+
     // 创建线程池
     threadpool<http_conn> *pool = NULL;
     try
@@ -204,6 +206,7 @@ int main(int argc, char *argv[])
 
     // 初始化缓存内容
     users->init_cache();
+    users->init_bloom_filter();
 
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
     assert(listenfd >= 0);

@@ -30,6 +30,8 @@ const char *error_500_form = "There was an unusual problem serving the requested
 char *http_conn::welcome_html = NULL;
 int http_conn::welcome_html_len = 0;
 
+BloomFilter http_conn::m_bloom_filter_user(10);
+
 // 网站的根目录
 std::string doc_root;
 
@@ -46,6 +48,36 @@ void http_conn::init_cache()
     welcome_html = new char[welcome_html_len];
     inFile.read(welcome_html, welcome_html_len);
     inFile.close();
+}
+
+// 初始化布隆过滤器
+void http_conn::init_bloom_filter()
+{
+    // 从连接池中取一个连接
+    MYSQL *mysql = NULL;
+    mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
+
+    // 在user表中检索username，passwd数据，浏览器端输入
+    if (mysql_query(mysql, "SELECT * FROM user_tb"))
+    {
+        LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
+    }
+
+    // 从表中检索完整的结果集
+    MYSQL_RES *result = mysql_store_result(mysql);
+
+    // 返回结果集中的列数
+    int num_fields = mysql_num_fields(result);
+
+    // 返回所有字段结构的数组
+    MYSQL_FIELD *fields = mysql_fetch_fields(result);
+
+    // 从结果集中获取下一行，将对应的用户名和密码，存入map中
+    while (MYSQL_ROW row = mysql_fetch_row(result))
+    {
+        string temp1(row[0]);
+        m_bloom_filter_user.addKey(temp1);
+    }
 }
 
 // 将文件描述符设置为非阻塞
@@ -672,6 +704,8 @@ http_conn::HTTP_CODE http_conn::do_request()
             }
             if (!has_same_name)
             {
+                m_bloom_filter_user.addKey(name);
+
                 Redis *write_redis;
                 redis_connectionRAII(&write_redis, m_write_redis_conn_pool);
                 write_redis->select(USER_DB);
@@ -699,47 +733,55 @@ http_conn::HTTP_CODE http_conn::do_request()
         // 若浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
         else if (strncmp(p + 1, "checkpwd.cgi\0", 14) == 0)
         {
-            Redis *read_redis;
-            redis_connectionRAII(&read_redis, m_read_redis_conn_pool);
-            read_redis->select(USER_DB);
-            string query_str = (string) "EXISTS " + name;
-
             bool login_result;
-            if (read_redis->query(query_str) == "0") // 缓存中没有
+            if (!m_bloom_filter_user.hasKey(name)) // 布隆过滤器中不存在
             {
-                MYSQL *mysql;
-                mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
-                query_str = (string) "SELECT * from user_tb WHERE user_name = '" + name + "'";
-                if (mysql_query(mysql, query_str.c_str()))
-                    ;
-                {
-                    LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
-                }
-                // 从表中检索完整的结果集
-                MYSQL_RES *result = mysql_store_result(mysql);
-                if (MYSQL_ROW row = mysql_fetch_row(result)) // 存在该用户
-                {
-                    if (strcmp(row[1], password) == 0)
-                        login_result = true;
-                    else
-                        login_result = false;
-                }
-                else
-                {
-                    login_result = false;
-                }
+                login_result = false;
             }
             else
             {
-                if (read_redis->query((string) "GET " + name) == password)
+                Redis *read_redis;
+                redis_connectionRAII(&read_redis, m_read_redis_conn_pool);
+                read_redis->select(USER_DB);
+                string query_str = (string) "EXISTS " + name;
+
+                if (read_redis->query(query_str) == "0") // 缓存中没有
                 {
-                    login_result = true;
+                    MYSQL *mysql;
+                    mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
+                    query_str = (string) "SELECT * from user_tb WHERE user_name = '" + name + "'";
+                    if (mysql_query(mysql, query_str.c_str()))
+                        ;
+                    {
+                        LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
+                    }
+                    // 从表中检索完整的结果集
+                    MYSQL_RES *result = mysql_store_result(mysql);
+                    if (MYSQL_ROW row = mysql_fetch_row(result)) // 存在该用户
+                    {
+                        if (strcmp(row[1], password) == 0)
+                            login_result = true;
+                        else
+                            login_result = false;
+                    }
+                    else
+                    {
+                        login_result = false;
+                    }
                 }
                 else
                 {
-                    login_result = false;
+                    if (read_redis->query((string) "GET " + name) == password)
+                    {
+                        login_result = true;
+                    }
+                    else
+                    {
+                        login_result = false;
+                    }
                 }
             }
+
             if (login_result)
             {
                 m_session_id = SessionManager::getInstance()->addSession(name);
@@ -831,6 +873,8 @@ http_conn::HTTP_CODE http_conn::do_request()
     if (doc_root + "/index.html" != m_real_file && doc_root + "/login.html" != m_real_file && doc_root + "/register.html" != m_real_file && doc_root + "/loginError.html" != m_real_file && doc_root + "/registerError.html" != m_real_file && user_name == "")
     {
         m_location = "/index.html";
+        m_want_set_cookie = 1;
+        m_cookie_to_set = "_sid=" + m_session_id + ";Max-Age=0;";
         return REDIRECT;
     }
 
