@@ -419,8 +419,8 @@ int main(int argc, char *argv[])
                         timer->cb_func = cb_func;
                         timer->user_data = &users_timer[sockfd];
 
-                        LOG_INFO("%s", "adjust timer once");
-                        Log::get_instance()->flush();
+                        // LOG_INFO("%s", "adjust timer once");
+                        // Log::get_instance()->flush();
                     }
                 }
                 else

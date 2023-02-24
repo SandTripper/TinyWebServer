@@ -334,8 +334,8 @@ http_conn::HTTP_CODE http_conn::process_read()
         text = get_line();            // start_line是行在buffer中 的起始位置
         m_start_line = m_checked_idx; // 记录下一行的起始位置
 
-        LOG_INFO("%s", text);
-        Log::get_instance()->flush();
+        // LOG_INFO("%s", text);
+        // Log::get_instance()->flush();
 
         switch (m_check_state)
         {
@@ -379,6 +379,10 @@ bool http_conn::process_write(HTTP_CODE ret)
     switch (ret)
     {
     case INTERNAL_ERROR:
+
+        LOG_INFO("%s", "INTERNAL ERROR");
+        Log::get_instance()->flush();
+
         add_status_line(500, error_500_title);
         add_headers(strlen(error_500_form));
         if (!add_content(error_500_form))
@@ -387,6 +391,10 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         break;
     case BAD_REQUEST:
+
+        LOG_INFO("%s", "BAD REQUEST");
+        Log::get_instance()->flush();
+
         add_status_line(400, error_400_form);
         add_headers(strlen(error_400_form));
         if (!add_content(error_400_form))
@@ -395,6 +403,9 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         break;
     case NO_RESOURCE:
+        LOG_INFO("%s", "NO RESOURCE");
+        Log::get_instance()->flush();
+
         add_status_line(404, error_404_title);
         add_headers(strlen(error_404_form));
         if (!add_content(error_404_form))
@@ -403,6 +414,9 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         break;
     case FORBIDDEN_REQUEST:
+        LOG_INFO("%s", "FORBIDDEN REQUEST");
+        Log::get_instance()->flush();
+
         add_status_line(403, error_403_title);
         add_headers(strlen(error_403_form));
         if (!add_content(error_403_form))
@@ -411,11 +425,16 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         break;
     case REDIRECT:
-        add_status_line(302, ok_302_title);
+        LOG_INFO("%s", "REDIRECT");
+        Log::get_instance()->flush();
 
+        add_status_line(302, ok_302_title);
         add_headers(0);
         break;
     case FILE_REQUEST_MAP:
+        LOG_INFO("%s", "FILE REQUEST MAP");
+        Log::get_instance()->flush();
+
         add_status_line(200, ok_200_title);
         if (m_file_stat.st_size != 0)
         {
@@ -437,6 +456,9 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         break;
     case FILE_REQUEST_MEM:
+        LOG_INFO("%s", "FILE REQUEST MEM");
+        Log::get_instance()->flush();
+
         add_status_line(200, ok_200_title);
         if (m_write_mem_len != 0)
         {
@@ -629,14 +651,17 @@ http_conn::HTTP_CODE http_conn::do_request()
     const char *p = strrchr(m_url, '/');
 
     // 处理注册和登录cgi
-    if (m_cgi == 1 && (strncmp(p + 1, "checkpwd.cgi\0", 14) == 0 || strncmp(p + 1, "checkrig.cgi\0", 14) == 0))
+    if (m_cgi == 1 && (strncmp(p + 1, "checkpwd.cgi\0", 14) == 0 || strncmp(p + 1, "checkrig.cgi\0", 14) == 0) || strncmp(p + 1, "logout.cgi\0", 12) == 0)
     {
-        char *m_url_real = new char[200];
-        strcpy(m_url_real, "/");
-        strcat(m_url_real, m_url + 2);
-        strncpy(m_real_file + len, m_url_real, FILENAME_LEN - len - 1);
-        delete[] m_url_real;
-        m_url_real = NULL;
+        if (strncmp(p + 1, "logout.cgi\0", 12) == 0)
+        {
+            SessionManager::getInstance()->delSession(m_session_id);
+            m_location = "/index.html";
+            m_want_set_cookie = 1;
+            m_cookie_to_set = "_sid=" + m_session_id + ";Max-Age=0;";
+            lock.unlock();
+            return REDIRECT;
+        }
 
         // 将用户名和密码提取出来
         char name[100], password[100];
@@ -652,6 +677,8 @@ http_conn::HTTP_CODE http_conn::do_request()
             password[j] = m_content[i];
         password[j] = '\0';
 
+        lock.lock();
+
         // 同步线程登录校验
         if (strncmp(p + 1, "checkrig.cgi\0", 14) == 0)
         {
@@ -661,15 +688,12 @@ http_conn::HTTP_CODE http_conn::do_request()
 
             // string sql_insert = (string) "INSERT INTO user_tb(user_name, password) VALUES('" + name + "', '" + password + "')";
 
-            lock.lock();
-
             // 从redis缓存查找该用户名
             Redis *read_redis;
             redis_connectionRAII(&read_redis, m_read_redis_conn_pool);
-            read_redis->select(USER_DB);
             string query_str = (string) "EXISTS " + name;
 
-            if (read_redis->query(query_str) == "0") // redis缓存中没有该用户名
+            if (read_redis->query(query_str, USER_DB).second == "0") // redis缓存中没有该用户名
             {
                 MYSQL *mysql;
                 mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
@@ -708,15 +732,13 @@ http_conn::HTTP_CODE http_conn::do_request()
 
                 Redis *write_redis;
                 redis_connectionRAII(&write_redis, m_write_redis_conn_pool);
-                write_redis->select(USER_DB);
                 query_str = (string) "SET " + name + " " + password;
-                write_redis->query(query_str).c_str();
+                write_redis->query(query_str, USER_DB).second.c_str();
 
                 MYSQL *mysql;
                 mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
                 query_str = (string) "INSERT INTO user_tb(user_name, password) VALUES('" + name + "', '" + password + "')";
                 int res = mysql_query(mysql, query_str.c_str());
-                lock.unlock();
 
                 if (!res)
                     m_location = "/login.html";
@@ -725,7 +747,6 @@ http_conn::HTTP_CODE http_conn::do_request()
             }
             else
             {
-                lock.unlock();
                 m_location = "/registerError.html";
             }
         }
@@ -742,16 +763,14 @@ http_conn::HTTP_CODE http_conn::do_request()
             {
                 Redis *read_redis;
                 redis_connectionRAII(&read_redis, m_read_redis_conn_pool);
-                read_redis->select(USER_DB);
                 string query_str = (string) "EXISTS " + name;
 
-                if (read_redis->query(query_str) == "0") // 缓存中没有
+                if (read_redis->query(query_str, USER_DB).second == "0") // 缓存中没有
                 {
                     MYSQL *mysql;
                     mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
                     query_str = (string) "SELECT * from user_tb WHERE user_name = '" + name + "'";
                     if (mysql_query(mysql, query_str.c_str()))
-                        ;
                     {
                         LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
                     }
@@ -771,7 +790,8 @@ http_conn::HTTP_CODE http_conn::do_request()
                 }
                 else
                 {
-                    if (read_redis->query((string) "GET " + name) == password)
+                    auto res = read_redis->query((string) "GET " + name, USER_DB);
+                    if ((res.first == 1 || res.first == 2) && res.second == password)
                     {
                         login_result = true;
                     }
@@ -796,17 +816,13 @@ http_conn::HTTP_CODE http_conn::do_request()
             }
             else
             {
+                LOG_INFO("user:%s login error\n", user_name.c_str());
+                Log::get_instance()->flush();
+
                 m_location = "/loginError.html";
             }
         }
-        return REDIRECT;
-    }
-    if (m_cgi == 1 && strncmp(p + 1, "logout.cgi\0", 12) == 0)
-    {
-        SessionManager::getInstance()->delSession(m_session_id);
-        m_location = "/index.html";
-        m_want_set_cookie = 1;
-        m_cookie_to_set = "_sid=" + m_session_id + ";Max-Age=0;";
+        lock.unlock();
         return REDIRECT;
     }
 
@@ -875,6 +891,7 @@ http_conn::HTTP_CODE http_conn::do_request()
         m_location = "/index.html";
         m_want_set_cookie = 1;
         m_cookie_to_set = "_sid=" + m_session_id + ";Max-Age=0;";
+
         return REDIRECT;
     }
 
@@ -1035,8 +1052,7 @@ bool http_conn::add_response(const char *format, ...)
     }
     m_write_idx += len;
     va_end(arg_list);
-    LOG_INFO("request:%s", m_write_buf);
-    Log::get_instance()->flush();
+
     return true;
 }
 

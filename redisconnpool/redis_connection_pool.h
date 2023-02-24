@@ -21,19 +21,25 @@ public:
 
     bool connect(std::string host, int port, std::string password = "");
 
-    void select(int db_id);
-
     std::string get(std::string key);
 
     void set(std::string key, std::string value);
 
-    std::string query(std::string content);
+    std::pair<int, std::string> query(std::string content, int db_id);
 
     void close();
 
 private:
+    void select(int db_id);
+
     redisContext *m_connect;
     redisReply *m_reply;
+
+    static locker m_lock;
+
+    std::string m_host;
+    int m_port;
+    std::string m_password;
 };
 
 class redisConnectionPool

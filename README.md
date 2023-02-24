@@ -25,6 +25,39 @@ Linux下C++轻量级Web服务器
 * log_mode = 同步写日志填 0，异步写日志填 1
 * threadnum = 线程数
   
+压力测试
+---------------
+测试软件：[Web Bench](http://home.tiscali.cz/~cz210552/webbench.html)
+
+测试环境：腾讯云2核4G服务器
+
+测试参数：
+* 用户数量：5000 
+* 并发请求持续时间：60s
+
+测试结果：
+
+LT+LT
+QPS：16550
+
+![](./ReadmeResource/LT+LT-test.png)
+
+LT+ET
+QPS：16404
+
+![](./ReadmeResource/LT+ET-test.png)
+
+ET+LT
+QPS：12013
+
+![](./ReadmeResource/ET+LT-test.png)
+
+ET+ET
+QPS：17547
+
+![](./ReadmeResource/ET+ET-test.png)
+
+
 
 BUG
 ---------------

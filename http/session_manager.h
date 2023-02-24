@@ -6,6 +6,7 @@
 #include "../mysqlconnpool/mysql_connection_pool.h"
 #include "../redisconnpool/redis_connection_pool.h"
 #include "bloom_filter.h"
+#include "../locker/locker.h"
 
 class Session;
 
@@ -45,6 +46,8 @@ private:
 
     // sessionID的布隆过滤器
     static BloomFilter m_bloom_filter_session_id;
+
+    static locker m_lock;
 };
 
 class Session

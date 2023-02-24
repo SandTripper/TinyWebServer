@@ -1,7 +1,11 @@
 #include "redis_connection_pool.h"
 #include <string>
 
+#include "../log/log.h"
+
 using namespace std;
+
+locker Redis::m_lock;
 
 Redis::Redis()
 {
@@ -13,8 +17,11 @@ Redis::~Redis()
     this->m_reply = NULL;
 }
 
-bool Redis::connect(std::string host, int port, string password)
+bool Redis::connect(string host, int port, string password)
 {
+    m_host = host;
+    m_port = port;
+    m_password = password;
     this->m_connect = redisConnect(host.c_str(), port);
     if (this->m_connect != NULL && this->m_connect->err)
     {
@@ -30,7 +37,9 @@ bool Redis::connect(std::string host, int port, string password)
 
 std::string Redis::get(std::string key)
 {
+    m_lock.lock();
     this->m_reply = (redisReply *)redisCommand(this->m_connect, "GET %s", key.c_str());
+    m_lock.unlock();
     std::string str = this->m_reply->str;
     freeReplyObject(this->m_reply);
     return str;
@@ -38,36 +47,60 @@ std::string Redis::get(std::string key)
 
 void Redis::set(std::string key, std::string value)
 {
+    m_lock.lock();
     redisCommand(this->m_connect, "SET %s %s", key.c_str(), value.c_str());
+    m_lock.unlock();
 }
 
 void Redis::select(int db_id)
 {
-    this->m_reply = (redisReply *)redisCommand(this->m_connect, "SELECT %d", db_id);
-    freeReplyObject(this->m_reply);
+    freeReplyObject(redisCommand(this->m_connect, "SELECT %d", db_id));
 }
 
-string Redis::query(string content)
+pair<int, string> Redis::query(string content, int db_id)
 {
+    int status;
+    m_lock.lock();
+    select(db_id);
     this->m_reply = (redisReply *)redisCommand(this->m_connect, content.c_str());
+
+    m_lock.unlock();
     string str;
     switch (m_reply->type)
     {
+    case REDIS_REPLY_STRING:
+        status = 1;
+        str = this->m_reply->str;
+        break;
     case REDIS_REPLY_INTEGER:
+        status = 2;
         str = to_string(this->m_reply->integer);
         break;
-    case REDIS_REPLY_STRING:
+
+    case REDIS_REPLY_STATUS:
+        status = 1;
         str = this->m_reply->str;
         break;
-    case REDIS_REPLY_STATUS:
+    case REDIS_REPLY_NIL:
+        status = 0;
+        str = "";
+        break;
+    case REDIS_REPLY_ERROR:
+        status = -1;
         str = this->m_reply->str;
+        printf("fuck\n");
+        fflush(stdout);
+        LOG_ERROR("redis error :%s", this->m_reply->str);
+        redisFree(this->m_connect);
+        connect(m_host, m_port, m_password);
         break;
     default:
-        str = "fuck";
+        status = 3;
+        str = "ARRAY";
         break;
     }
     freeReplyObject(this->m_reply);
-    return str;
+    return make_pair(status, str);
 }
 
 void Redis::close()

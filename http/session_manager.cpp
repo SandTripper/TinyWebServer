@@ -12,6 +12,8 @@ static const uint SEED = 114514;
 
 BloomFilter SessionManager::m_bloom_filter_session_id(10);
 
+locker SessionManager::m_lock;
+
 SessionManager *SessionManager::getInstance()
 {
     static SessionManager session_manager;
@@ -38,26 +40,26 @@ string SessionManager::addSession(string user_name, int survival_time)
         death_time = 4294967295;
     }
 
+    m_lock.lock();
     m_bloom_filter_session_id.addKey(session_id);
+    m_lock.unlock();
 
     string query_str;
 
     Redis *write_redis;
     redis_connectionRAII rediscon(&write_redis, m_write_redis_conn_pool);
-    write_redis->select(SESSION_DB);
     query_str = (string) "SET " + session_id + " " + user_name;
-    write_redis->query(query_str);
+    write_redis->query(query_str, SESSION_DB);
     if (survival_time != -1)
     {
         query_str = "EXPIRE " + session_id + " " + to_string(survival_time);
-        write_redis->query(query_str).c_str();
+        write_redis->query(query_str, SESSION_DB).second.c_str();
     }
 
     MYSQL *mysql;
     mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
     query_str = (string) "INSERT INTO session_tb VALUES('" + session_id + "', '" + user_name + "', " + to_string(death_time) + ")";
     if (mysql_query(mysql, query_str.c_str()))
-        ;
     {
         LOG_ERROR("INSERT error:%s\n", mysql_error(mysql));
     }
@@ -75,21 +77,22 @@ Session SessionManager::getSession(string session_id)
     {
         return Session("", 0, "");
     }
-
+    m_lock.lock();
     if (!m_bloom_filter_session_id.hasKey(session_id)) // 不在布隆过滤器
     {
+        m_lock.unlock();
         return Session("", 0, "");
     }
+    m_lock.unlock();
 
     string query_str;
 
     // 从redis缓存查找该用户名
     Redis *read_redis;
     redis_connectionRAII(&read_redis, m_read_redis_conn_pool);
-    read_redis->select(SESSION_DB);
     query_str = (string) "EXISTS " + session_id;
 
-    if (read_redis->query(query_str) == "0") // redis缓存中没有该用户名
+    if (read_redis->query(query_str, SESSION_DB).second == "0") // redis缓存中没有该用户名
     {
         MYSQL *mysql;
         mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
@@ -125,9 +128,24 @@ Session SessionManager::getSession(string session_id)
         is_session_exist = true;
 
         query_str = (string) "GET " + session_id;
-        user_name = read_redis->query(query_str);
+        user_name = read_redis->query(query_str, SESSION_DB).second;
         query_str = (string) "TTL " + session_id;
-        int survival_time = stoi(read_redis->query(query_str));
+        auto res = read_redis->query(query_str, SESSION_DB);
+        int survival_time = 0;
+        if (res.first == 1)
+        {
+            puts(res.second.c_str());
+        }
+
+        if (res.first == 2)
+        {
+            survival_time = stoi(res.second);
+        }
+        else
+        {
+            LOG_ERROR("TTL error:%s\n", res.second.c_str());
+            Log::get_instance()->flush();
+        }
         if (survival_time != -1)
         {
             death_time = getMillisecondTimeStamp() / 1000 + survival_time;
@@ -149,9 +167,8 @@ void SessionManager::delSession(string session_id)
 
     Redis *write_redis;
     redis_connectionRAII rediscon(&write_redis, m_write_redis_conn_pool);
-    write_redis->select(SESSION_DB);
     query_str = (string) "DEL " + session_id;
-    write_redis->query(query_str);
+    write_redis->query(query_str, SESSION_DB);
 
     MYSQL *mysql;
     mysql_connectionRAII mysqlcon(&mysql, m_mysql_conn_pool);
